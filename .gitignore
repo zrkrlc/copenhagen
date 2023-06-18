@@ -1,6 +1,8 @@
 # Created by https://www.toptal.com/developers/gitignore/api/clojure,node,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=clojure,node,visualstudiocode
 
+.DS_Store
+
 ### Clojure ###
 pom.xml
 pom.xml.asc
@@ -16,6 +18,8 @@ pom.xml.asc
 .lein-failures
 .nrepl-port
 .cpcache/
+.shadow-cljs/
+public/js
 
 ### Node ###
 # Logs
