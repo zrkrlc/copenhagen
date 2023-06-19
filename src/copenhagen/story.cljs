@@ -5,7 +5,7 @@
 ;; Story graph
 ;; --------------------------------
 
-;;; Utilities
+;;; Constants
 
 ;; Contains all story elements
 (defonce *registry (reagent/atom {}))
@@ -17,6 +17,8 @@
                           :element.type/word])
 
 
+;;; Utilities
+
 (defn valid-relationship?
   "Checks if two elements can have a parent-child relationship via their types"
   [parent-type child-type]
@@ -27,31 +29,43 @@
      (dec (.indexOf hierarchy child-type))))
 
 
-;; TODO: check for cycles
+;; TODO: implement this
+(defn has-cycle?
+  "Detects if story graph will have a cycle if child is added to it"
+  [registry child-element]
+  false)
+
+
 (defn valid-child?
-  [parent-element child-element]
-  (valid-relationship? (:element/type parent-element)
-                       (:element/type child-element)))
+  "Checks if a potential child element can be added to the registry"
+  [registry parent-element child-element]
+  (and (valid-relationship? (:element/type parent-element)
+                        (:element/type child-element))
+       (not (has-cycle? registry child-element))))
 
 
 ;;; Constructor
 
 (defn element 
-  ([] (element {}))
+  ([registry] (element registry {}))
 
-  ([{:element/keys [id type content children dispatch triggered? active?]
-     :or            {id         (random-uuid)
-                     type       :element.type/word
-                     content    ""
-                     children   []
-                     dispatch   nil
-                     triggered? false
-                     active?    false}}]
+  ([registry {:element/keys [id type content children dispatch triggered? active?]
+              :or            {id         (random-uuid)
+                              type       :element.type/word
+                              content    ""
+                              children   []
+                              dispatch   nil
+                              triggered? false
+                              active?    false}}]
 
    #:element{:id         id
              :type       type
              :content    (if (string? content) [:span content] content)
-             :children   (vec (filter (fn [child] (valid-child? id child)) children))
+             :children   (vec (filter (fn [child]
+                                        (valid-child?
+                                         registry
+                                         (element registry #:element{:type type})
+                                         child)) children))
              :dispatch   dispatch
              :triggered? triggered?
              :active?    active?}))
@@ -108,7 +122,7 @@
   "Dissocs content to the element corresponding to the target ID and returns the new registry")
 
 
-;; Ex. (upsert registry [0 2] (element #element{:id 3}))
+;; Ex. (upsert registry [0 2] (element registry #element{:id 3}))
 ;; => inserts new element with ID 3 at path [0 2], which makes it a new child of the root node
 (defn upsert
   [registry path element]
@@ -132,80 +146,56 @@
    For :element.type/sentence or :element.type/word, it should be a span with 
    class sentence or word")
 
-
-#_(defn walk-ids
-  [graph path & [{:keys [registry]
-                  :or   {registry @*registry}}]
-   (loop [cursor (first path)
-          cursor-element (get registry cursor)
-          to-visit (rest path)]
-     (if (empty? to-visit)
-       cursor-element
-       (recur (first (rest path))
-              (get registry cursor))))])
-
-;; TODO: fix this logic
-(defn walk
-  [graph path & [{:keys [registry]
-                  :or   {registry @*registry}}]]
-  (loop [cursor         (first path)
-         cursor-element (if cursor 
-                          (registry (get (:element/children graph) cursor))
-                          graph)
-         to-visit       (rest path)]
-    (if (empty? to-visit)
-      cursor-element
-      (let [next-cursor  (first to-visit)
-            next-element (registry (nth (:element/children cursor-element) next-cursor))]
-        (prn next-cursor)
-        (recur next-cursor
-               (if next-cursor next-element cursor-element)
-               (rest to-visit))))))
-
+;; --------------------------------
+;; REPL
+;; --------------------------------
 
 (comment
-  (reset! *registry {})
-  (swap! *registry assoc 0 (element #:element{:id         0
-                                              :type       :element.type/story
-                                              :content    ""
-                                              :children   [1 2]
-                                              :dispatch   nil
-                                              :triggered? false
-                                              :active?    false}))
+  ;; Sets up initial story graph
+  (do (reset! *registry {})
+      (swap! *registry assoc :a (element @*registry #:element{:id         :a
+                                                              :type       :element.type/story
+                                                              :content    ""
+                                                              :children   [:aa :ab]
+                                                              :dispatch   nil
+                                                              :triggered? false
+                                                              :active?    false}))
+
+      (swap! *registry assoc :aa (element @*registry #:element{:id         :aa
+                                                               :type       :element.type/paragraph
+                                                               :content    ""
+                                                               :children   [:aaa :aab :aac]
+                                                               :dispatch   nil
+                                                               :triggered? false
+                                                               :active?    false}))
+
+      (swap! *registry assoc :ab (element @*registry #:element{:id         :ab
+                                                               :type       :element.type/paragraph
+                                                               :content    ""
+                                                               :children   [:aba :abb :abc]
+                                                               :dispatch   nil
+                                                               :triggered? false
+                                                               :active?    false}))
+
+      (doall (for [key [:aaa :aab :aac :aba :abb :abc]]
+               (swap! *registry assoc key (element @*registry #:element{:id         key
+                                                                        :type       :element.type/sentence
+                                                                        :content    ""
+                                                                        :children   []
+                                                                        :dispatch   nil
+                                                                        :triggered? false
+                                                                        :active?    false})))))
   
-  (swap! *registry assoc 1 (element #:element{:id         1
-                                              :type       :element.type/paragraph
-                                              :content    ""
-                                              :children   [:a1 :b1 :c1]
-                                              :dispatch   nil
-                                              :triggered? false
-                                              :active?    false}))
-  
-  (swap! *registry assoc 2 (element #:element{:id         2
-                                              :type       :element.type/paragraph
-                                              :content    ""
-                                              :children   [:a2 :b2 :c2]
-                                              :dispatch   nil
-                                              :triggered? false
-                                              :active?    false}))
-  
-  (doall (for [key [:a1 :b1 :c1 :a2 :b2 :c2]]
-           (swap! *registry assoc key (element #:element{:id         key
-                                                         :type       :element.type/sentence
-                                                         :content    ""
-                                                         :children   []
-                                                         :dispatch   nil
-                                                         :triggered? false
-                                                         :active?    false}))))
-  
-  (swap! *registry assoc :aa1 (element #:element{:id         :aa1
-                                                 :type       :element.type/paragraph
-                                                 :content    ""
-                                                 :children   [1]
-                                                 :dispatch   nil
-                                                 :triggered? false
-                                                 :active?    false}))
+  ;; Introduces a cycle; should be detected
+  (swap! *registry assoc :aad (element @*registry #:element{:id         :aad
+                                                            :type       :element.type/paragraph
+                                                            :content    ""
+                                                            :children   [:a]
+                                                            :dispatch   nil
+                                                            :triggered? false
+                                                            :active?    false}))
   
   (println (map :element/type (vals @*registry)))
+
   (println @*registry)
   )
